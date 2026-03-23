@@ -1,8 +1,5 @@
 variable "proxmox_host" {}
-variable "proxmox_token_secret" {}
-variable "registry_host" {}
-variable "registry_user" {}
-variable "registry_password" {
+variable "proxmox_token_secret" {
   sensitive = true
 }
 variable "lxc_ip" { default = "190.1.0.108" }
