@@ -1,6 +1,6 @@
 services:
   nats:
-    image: nats:latest-alpine
+    image: nats:alpine
     container_name: nats-server
     restart: unless-stopped
 
