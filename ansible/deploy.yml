@@ -6,7 +6,7 @@
 
   vars:
     nats_dir: /opt/nats
-    compose_file: "{{ nats_dir }}/docker-compose.yml"
+    compose_file: "{{ nats_dir }}/compose.yml"
     nats_conf_file: "{{ nats_dir }}/nats-server.conf"
 
   tasks:
@@ -93,9 +93,9 @@
     # ------------------------------------------------------------------ #
     # 5. Copiar artefactos                                                 #
     # ------------------------------------------------------------------ #
-    - name: Copiar docker-compose.yml
+    - name: Copiar compose.yml
       ansible.builtin.copy:
-        src: files/docker-compose.yml
+        src: files/compose.yml
         dest: "{{ compose_file }}"
         mode: "0640"
       notify: Restart NATS
