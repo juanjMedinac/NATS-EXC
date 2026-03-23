@@ -1,8 +1,4 @@
 ---
-# ansible/deploy.yml
-# Instala Docker, copia el Compose y levanta NATS en el LXC.
-# Ejecución:  ansible-playbook -i inventory deploy.yml
-
 - name: Deploy NATS Server
   hosts: nats
   become: true
@@ -10,7 +6,7 @@
 
   vars:
     nats_dir: /opt/nats
-    compose_file: "{{ nats_dir }}/compose.yml"
+    compose_file: "{{ nats_dir }}/docker-compose.yml"
     nats_conf_file: "{{ nats_dir }}/nats-server.conf"
 
   tasks:
@@ -29,17 +25,31 @@
         update_cache: true
 
     # ------------------------------------------------------------------ #
-    # 2. Instalar Docker Engine                                            #
+    # 2. Instalar Docker Engine (método moderno, sin apt-key)             #
     # ------------------------------------------------------------------ #
-    - name: Agregar llave GPG de Docker
-      ansible.builtin.apt_key:
-        url: https://download.docker.com/linux/debian/gpg
-        state: present
+    - name: Crear directorio para keyrings
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Descargar y guardar llave GPG de Docker
+      ansible.builtin.shell:
+        cmd: >
+          curl -fsSL https://download.docker.com/linux/debian/gpg |
+          gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        creates: /etc/apt/keyrings/docker.gpg
+
+    - name: Establecer permisos de la llave GPG
+      ansible.builtin.file:
+        path: /etc/apt/keyrings/docker.gpg
+        mode: "0644"
 
     - name: Agregar repositorio de Docker
       ansible.builtin.apt_repository:
-        repo: >
-          deb [arch={{ ansible_architecture | replace('x86_64','amd64') }}]
+        repo: >-
+          deb [arch={{ ansible_architecture | replace('x86_64','amd64') }}
+          signed-by=/etc/apt/keyrings/docker.gpg]
           https://download.docker.com/linux/debian
           {{ ansible_distribution_release }} stable
         state: present
@@ -52,7 +62,7 @@
           - docker-ce-cli
           - containerd.io
           - docker-buildx-plugin
-          - compose-plugin
+          - docker-compose-plugin
         state: present
         update_cache: true
 
@@ -63,12 +73,13 @@
         state: started
 
     # ------------------------------------------------------------------ #
-    # 3. Instalar librería Python de Docker (para módulos Ansible)         #
+    # 3. Instalar librería Python de Docker (para módulos Ansible)        #
     # ------------------------------------------------------------------ #
     - name: Instalar docker SDK para Python
       ansible.builtin.pip:
         name: docker
         state: present
+        extra_args: "--break-system-packages"
 
     # ------------------------------------------------------------------ #
     # 4. Crear directorio de trabajo                                       #
@@ -82,9 +93,9 @@
     # ------------------------------------------------------------------ #
     # 5. Copiar artefactos                                                 #
     # ------------------------------------------------------------------ #
-    - name: Copiar compose.yml
+    - name: Copiar docker-compose.yml
       ansible.builtin.copy:
-        src: files/compose.yml
+        src: files/docker-compose.yml
         dest: "{{ compose_file }}"
         mode: "0640"
       notify: Restart NATS
@@ -103,7 +114,7 @@
       community.docker.docker_compose_v2:
         project_src: "{{ nats_dir }}"
         state: present
-        pull: always # Siempre descarga la imagen más reciente
+        pull: always
 
     # ------------------------------------------------------------------ #
     # 7. Esperar a que NATS esté listo                                     #
@@ -114,9 +125,6 @@
         port: 4222
         timeout: 30
 
-  # -------------------------------------------------------------------- #
-  # Handlers                                                              #
-  # -------------------------------------------------------------------- #
   handlers:
     - name: Restart NATS
       community.docker.docker_compose_v2:
