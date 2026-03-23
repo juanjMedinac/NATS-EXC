@@ -1,0 +1,79 @@
+---
+# ansible/healthcheck.yml
+# Verifica que NATS esté operativo tras el despliegue.
+# Ejecución:  ansible-playbook -i inventory healthcheck.yml
+
+- name: Health Check — NATS Server
+  hosts: nats
+  become: true
+  gather_facts: false
+
+  vars:
+    nats_dir: /opt/nats
+    nats_http_port: 8222
+
+  tasks:
+    # ------------------------------------------------------------------ #
+    # 1. Contenedor corriendo                                              #
+    # ------------------------------------------------------------------ #
+    - name: Verificar que el contenedor nats-server está en estado running
+      community.docker.docker_container_info:
+        name: nats-server
+      register: container_info
+
+    - name: Fallar si el contenedor no está running
+      ansible.builtin.fail:
+        msg: "El contenedor nats-server no está en estado 'running' (estado actual: {{ container_info.container.State.Status }})"
+      when: container_info.container.State.Status != "running"
+
+    # ------------------------------------------------------------------ #
+    # 2. Puerto de clientes accesible                                      #
+    # ------------------------------------------------------------------ #
+    - name: Verificar que el puerto 4222 responde
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: 4222
+        timeout: 10
+        msg: "El puerto 4222 de NATS no responde"
+
+    # ------------------------------------------------------------------ #
+    # 3. Endpoint de monitoreo HTTP                                        #
+    # ------------------------------------------------------------------ #
+    - name: Consultar endpoint /healthz de NATS
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:{{ nats_http_port }}/healthz"
+        method: GET
+        return_content: true
+        status_code: 200
+        timeout: 10
+      register: healthz_response
+
+    - name: Mostrar respuesta de /healthz
+      ansible.builtin.debug:
+        msg: "NATS /healthz → {{ healthz_response.json | default(healthz_response.content) }}"
+
+    # ------------------------------------------------------------------ #
+    # 4. Información del servidor                                          #
+    # ------------------------------------------------------------------ #
+    - name: Consultar /varz para info del servidor
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:{{ nats_http_port }}/varz"
+        method: GET
+        return_content: true
+        status_code: 200
+        timeout: 10
+      register: varz_response
+
+    - name: Mostrar versión y uptime de NATS
+      ansible.builtin.debug:
+        msg:
+          - "Versión : {{ varz_response.json.version }}"
+          - "Uptime  : {{ varz_response.json.uptime }}"
+          - "Conex.  : {{ varz_response.json.connections }}"
+
+    # ------------------------------------------------------------------ #
+    # 5. Resultado final                                                   #
+    # ------------------------------------------------------------------ #
+    - name: Health check completado con éxito
+      ansible.builtin.debug:
+        msg: "✅ NATS Server operativo en {{ ansible_host }}:4222"
