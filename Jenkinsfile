@@ -39,7 +39,6 @@ pipeline {
             steps {
                 withCredentials([
                     string(credentialsId: 'PROXMOX_API_TOKEN',  variable: 'TF_VAR_proxmox_token_secret'),
-                    string(credentialsId: 'LXC_GATEWAY',        variable: 'TF_VAR_lxc_gateway')
                 ]) {
                     dir("${TERRAFORM_DIR}") {
                         sh '''
